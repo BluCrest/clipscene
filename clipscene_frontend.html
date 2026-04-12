@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Clipscene — Find Any Movie From a Clip</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet"/>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0a0f;
+    --bg-elev: #12121a;
+    --surface: #1a1a24;
+    --text: #f0f0f5;
+    --text-muted: #8a8a9a;
+    --accent: #e50914;
+    --accent-hover: #b20710;
+    --gold: #d4a574;
+    --border: #2a2a3a;
+    --premium: #d4a574;
+    --premium-bg: rgba(212,165,116,0.08);
+  }
+  html { scroll-behavior: smooth; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; line-height: 1.6; overflow-x: hidden; }
+  .grain {
+    position: fixed; inset: 0; pointer-events: none; z-index: 1000; opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  }
+  /* Navigation */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: 24px 48px;
+    display: flex; justify-content: space-between; align-items: center;
+    z-index: 100;
+    background: linear-gradient(to bottom, var(--bg) 0%, transparent 100%);
+  }
+  .logo { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; }
+  .logo::before { content: '🎬'; color: var(--accent); font-size: 20px; }
+  .nav-links { display: flex; gap: 32px; align-items: center; }
+  .nav-links a { color: var(--text-muted); text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--text); }
+  .btn-nav { background: transparent; border: 1px solid var(--border); color: var(--text); padding: 10px 20px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+  .btn-nav:hover { border-color: var(--text); background: var(--surface); }
+  /* User avatar in nav */
+  .nav-user { display: flex; align-items: center; gap: 12px; }
+  .nav-avatar {
+    width: 36px; height: 36px; border-radius: 50%; background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600; cursor: pointer; border: 2px solid transparent;
+    transition: border-color 0.2s;
+  }
+  .nav-avatar:hover { border-color: var(--accent); }
+  .nav-avatar.premium-avatar { background: var(--gold); color: #0a0a0f; }
+  .nav-plan-badge {
+    font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px;
+    background: var(--premium-bg); color: var(--gold); border: 1px solid rgba(212,165,116,0.3);
+  }
+  .nav-plan-badge.free { background: var(--surface); color: var(--text-muted); border-color: var(--border); }
+  /* Hero */
+  .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 120px 24px 80px; position: relative; overflow: hidden; }
+  .hero-bg {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(229,9,20,0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 80%, rgba(212,165,116,0.08), transparent);
+    pointer-events: none;
+  }
+  .hero-content { max-width: 800px; text-align: center; position: relative; z-index: 2; }
+  .badge { display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); padding: 8px 16px; border-radius: 100px; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 32px; }
+  .badge::before { content: ''; width: 6px; height: 6px; background: #22c55e; border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  h1 { font-family: 'Playfair Display', serif; font-size: clamp(40px, 6vw, 72px); font-weight: 600; line-height: 1.1; margin-bottom: 24px; letter-spacing: -0.02em; }
+  h1 span { color: var(--gold); font-style: italic; }
+  .hero-sub { font-size: 18px; color: var(--text-muted); max-width: 560px; margin: 0 auto 48px; line-height: 1.7; }
+  /* Demo Input */
+  .demo-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 8px; max-width: 600px; margin: 0 auto 24px; display: flex; gap: 8px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  .demo-input { flex: 1; background: transparent; border: none; padding: 16px 20px; color: var(--text); font-size: 15px; outline: none; }
+  .demo-input::placeholder { color: var(--text-muted); }
+  .btn-primary { background: var(--accent); color: white; border: none; padding: 16px 28px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+  .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+  .hero-note { font-size: 13px; color: var(--text-muted); display: flex; align-items: center; justify-content: center; gap: 6px; }
+  /* Usage counter bar - DISPLAY ONLY, not enforcement */
+  .usage-bar-wrap { max-width: 600px; margin: 0 auto 16px; }
+  .usage-bar-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .usage-bar-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .usage-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.5s ease; }
+  .usage-bar-fill.warn { background: #f59e0b; }
+  .usage-bar-fill.full { background: #ef4444; }
+  /* Sections */
+  .section { padding: 120px 48px; max-width: 1200px; margin: 0 auto; }
+  .section-header { text-align: center; margin-bottom: 80px; }
+  .section-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em; color: var(--accent); margin-bottom: 16px; }
+  h2 { font-family: 'Playfair Display', serif; font-size: clamp(32px, 4vw, 48px); font-weight: 600; margin-bottom: 16px; }
+  .section-sub { color: var(--text-muted); font-size: 17px; max-width: 600px; margin: 0 auto; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+  .step { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 16px; padding: 40px 32px; position: relative; transition: all 0.3s; }
+  .step:hover { border-color: var(--accent); transform: translateY(-4px); }
+  .step-num { position: absolute; top: -16px; left: 32px; background: var(--accent); color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+  .step h3 { font-size: 20px; font-weight: 600; margin-bottom: 12px; margin-top: 8px; }
+  .step p { color: var(--text-muted); font-size: 15px; line-height: 1.7; }
+  .features { background: var(--bg-elev); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .features-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 48px; max-width: 1000px; margin: 0 auto; }
+  .feature { display: flex; gap: 20px; }
+  .feature-icon { width: 48px; height: 48px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .feature h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+  .feature p { color: var(--text-muted); font-size: 15px; line-height: 1.7; }
+  /* Pricing */
+  .pricing-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 32px; max-width: 800px; margin: 0 auto; }
+  .pricing-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 20px; padding: 40px; position: relative; }
+  .pricing-card.featured { border-color: var(--accent); background: linear-gradient(180deg, var(--bg-elev) 0%, rgba(229,9,20,0.05) 100%); }
+  .popular-badge { position: absolute; top: -12px; right: 24px; background: var(--accent); color: white; padding: 6px 16px; border-radius: 100px; font-size: 12px; font-weight: 600; }
+  .pricing-header { margin-bottom: 32px; }
+  .pricing-name { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 8px; }
+  .pricing-price { font-size: 48px; font-weight: 700; display: flex; align-items: baseline; gap: 4px; }
+  .pricing-price span { font-size: 16px; font-weight: 400; color: var(--text-muted); }
+  .pricing-desc { color: var(--text-muted); font-size: 14px; margin-top: 8px; }
+  .pricing-features { list-style: none; margin-bottom: 32px; }
+  .pricing-features li { padding: 12px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; font-size: 15px; }
+  .pricing-features li::before { content: '✓'; color: var(--accent); font-weight: 700; }
+  .pricing-features li.disabled { color: var(--text-muted); text-decoration: line-through; }
+  .pricing-features li.disabled::before { content: '✗'; color: var(--text-muted); }
+  .btn-full { width: 100%; justify-content: center; }
+  .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-secondary:hover { background: var(--surface); transform: none; }
+  .honest-section { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 40px; max-width: 800px; margin: 80px auto 0; text-align: center; }
+  .honest-section h3 { font-size: 18px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .honest-section p { color: var(--text-muted); font-size: 15px; line-height: 1.8; max-width: 600px; margin: 0 auto; }
+  footer { border-top: 1px solid var(--border); padding: 60px 48px; text-align: center; }
+  .footer-logo { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .footer-logo::before { content: '🎬'; color: var(--accent); }
+  .footer-tagline { color: var(--text-muted); font-size: 14px; margin-bottom: 32px; }
+  .footer-links { display: flex; justify-content: center; gap: 32px; margin-bottom: 32px; }
+  .footer-links a { color: var(--text-muted); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { color: var(--text-muted); font-size: 13px; }
+  .input-error { color: #ff6b6b; font-size: 13px; text-align: center; margin-top: 8px; min-height: 20px; }
+  /* Result Card */
+  .result-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; max-width: 600px; margin: 24px auto 0; display: none; animation: fadeSlideIn 0.4s ease; }
+  .result-card.visible { display: block; }
+  .result-card.error-card { border-color: rgba(229,9,20,0.4); background: rgba(229,9,20,0.05); }
+  @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  .result-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.15em; color: var(--accent); margin-bottom: 12px; }
+  .result-title { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 600; margin-bottom: 4px; }
+  .result-year { color: var(--gold); font-size: 16px; font-weight: 500; margin-bottom: 16px; }
+  .result-meta { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  .result-badge { background: var(--bg-elev); border: 1px solid var(--border); padding: 6px 14px; border-radius: 100px; font-size: 13px; color: var(--text-muted); }
+  .result-badge strong { color: var(--text); }
+  .result-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .result-section-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 10px; }
+  .result-summary { color: var(--text-muted); font-size: 15px; line-height: 1.7; margin-bottom: 20px; }
+  .result-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .result-tag { background: var(--bg); border: 1px solid var(--border); color: var(--text-muted); padding: 5px 12px; border-radius: 6px; font-size: 13px; }
+  .result-error-msg { color: var(--text-muted); font-size: 15px; line-height: 1.7; }
+  .result-error-msg strong { color: var(--text); display: block; font-size: 17px; margin-bottom: 8px; }
+  /* Premium result sections */
+  .premium-section { margin-top: 20px; }
+  .cast-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .cast-pill {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; font-size: 13px;
+  }
+  .cast-pill .cast-name { color: var(--text); font-weight: 500; }
+  .cast-pill .cast-role { color: var(--text-muted); font-size: 12px; }
+  .director-card {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; margin-top: 10px;
+  }
+  .director-name { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+  .director-films { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .director-film-tag { background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); padding: 4px 10px; border-radius: 6px; font-size: 12px; }
+  .related-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
+  .related-item { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .related-title { font-weight: 600; font-size: 14px; }
+  .related-reason { color: var(--text-muted); font-size: 12px; margin-top: 3px; }
+  .watch-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .watch-link { display: flex; align-items: center; gap: 6px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--text); text-decoration: none; transition: border-color 0.2s; }
+  .watch-link:hover { border-color: var(--gold); color: var(--gold); }
+  /* Premium gate teaser */
+  .premium-gate {
+    margin-top: 20px; background: var(--premium-bg);
+    border: 1px solid rgba(212,165,116,0.25); border-radius: 12px;
+    padding: 20px; text-align: center;
+  }
+  .premium-gate-title { font-size: 14px; font-weight: 600; color: var(--gold); margin-bottom: 6px; }
+  .premium-gate-text { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; }
+  .btn-gold { background: var(--gold); color: #0a0a0f; border: none; padding: 11px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+  .btn-gold:hover { opacity: 0.9; transform: translateY(-1px); }
+  /* Loading shimmer */
+  .shimmer-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; max-width: 600px; margin: 24px auto 0; display: none; }
+  .shimmer-card.visible { display: block; }
+  .shimmer-line { height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--bg-elev) 25%, var(--border) 50%, var(--bg-elev) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; margin-bottom: 12px; }
+  .shimmer-line.wide { width: 60%; }
+  .shimmer-line.short { width: 30%; }
+  .shimmer-line.full { width: 100%; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  /* ===================== MODAL SYSTEM ===================== */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 500;
+    background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; opacity: 0; pointer-events: none;
+    transition: opacity 0.25s;
+  }
+  .modal-overlay.active { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: 20px;
+    padding: 40px; width: 100%; max-width: 440px;
+    transform: translateY(20px); transition: transform 0.25s;
+    position: relative;
+  }
+  .modal-overlay.active .modal { transform: translateY(0); }
+  .modal-close {
+    position: absolute; top: 16px; right: 20px;
+    background: none; border: none; color: var(--text-muted); font-size: 24px;
+    cursor: pointer; line-height: 1; padding: 4px 8px; border-radius: 6px;
+    transition: color 0.2s; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal-close::before { content: '✕'; }
+  .modal-logo { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .modal-logo::before { content: '🎬'; color: var(--accent); font-size: 18px; }
+  .modal-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .modal-sub { color: var(--text-muted); font-size: 14px; margin-bottom: 28px; }
+  /* Social auth buttons - Google only for now */
+  .social-btns { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  .social-btn {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 13px 18px; font-size: 14px; font-weight: 500; cursor: pointer; color: var(--text);
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .social-btn:hover { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.04); }
+  .social-btn svg { flex-shrink: 0; }
+  .divider-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .divider-row hr { flex: 1; border: none; border-top: 1px solid var(--border); }
+  .divider-row span { color: var(--text-muted); font-size: 12px; }
+  /* Form fields */
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--text-muted); }
+  .field input {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px; color: var(--text); font-size: 15px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .field input::placeholder { color: #555566; }
+  .btn-submit {
+    width: 100%; background: var(--accent); color: white; border: none;
+    padding: 14px; border-radius: 10px; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: background 0.2s; margin-top: 4px;
+  }
+  .btn-submit:hover { background: var(--accent-hover); }
+  .modal-switch { text-align: center; margin-top: 16px; font-size: 13px; color: var(--text-muted); }
+  .modal-switch a { color: var(--text); text-decoration: underline; cursor: pointer; }
+  .modal-err { color: #ff6b6b; font-size: 13px; margin-top: 10px; min-height: 18px; }
+  /* Payment modal */
+  .plan-preview {
+    background: var(--premium-bg); border: 1px solid rgba(212,165,116,0.3);
+    border-radius: 12px; padding: 20px; margin-bottom: 24px;
+  }
+  .plan-preview-name { font-size: 13px; font-weight: 600; color: var(--gold); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .plan-preview-price { font-size: 36px; font-weight: 700; }
+  .plan-preview-price span { font-size: 15px; color: var(--text-muted); font-weight: 400; }
+  .plan-preview-perks { list-style: none; margin-top: 14px; }
+  .plan-preview-perks li { font-size: 13px; color: var(--text-muted); padding: 5px 0; display: flex; align-items: center; gap: 8px; }
+  .plan-preview-perks li::before { content: '✓'; color: var(--gold); font-weight: 700; }
+  .btn-pay { width: 100%; border: none; padding: 15px; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity 0.2s; margin-bottom: 10px; }
+  .btn-pay:hover { opacity: 0.9; }
+  .btn-flutterwave { background: #F5A623; color: #0a0a0f; }
+  .pay-note { text-align: center; font-size: 12px; color: var(--text-muted); }
+  .pay-note a { color: var(--text-muted); }
+  /* Limit hit modal */
+  .limit-icon { font-size: 48px; margin-bottom: 16px; text-align: center; }
+  .limit-title { font-size: 22px; font-weight: 700; text-align: center; margin-bottom: 8px; }
+  .limit-sub { color: var(--text-muted); font-size: 15px; text-align: center; margin-bottom: 28px; line-height: 1.6; }
+  .limit-perks { list-style: none; margin-bottom: 28px; }
+  .limit-perks li { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .limit-perks li::before { content: '★'; color: var(--gold); font-size: 10px; }
+  .limit-reset { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 12px; }
+  /* Country selector */
+  .country-select { margin-bottom: 20px; }
+  .country-select label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--text-muted); }
+  .country-select select {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px; color: var(--text); font-size: 15px; outline: none;
+  }
+  /* Responsive */
+  @media (max-width: 768px) {
+    nav { padding: 20px 24px; }
+    .nav-links { display: none; }
+    .section { padding: 80px 24px; }
+    .steps { grid-template-columns: 1fr; }
+    .features-grid { grid-template-columns: 1fr; }
+    .pricing-cards { grid-template-columns: 1fr; }
+    .demo-box { flex-direction: column; }
+    .btn-primary { justify-content: center; }
+    .related-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="grain"></div>
+
+  <!-- ===== NAV ===== -->
+  <nav>
+    <div class="logo">Clipscene</div>
+    <div class="nav-links">
+      <a href="#how">How it Works</a>
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <div id="navAuthArea">
+        <button class="btn-nav" id="navSignInBtn" onclick="openAuthModal('signin')">Sign In</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ===== HERO ===== -->
+  <section class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-content">
+      <div class="badge">Now in Beta</div>
+      <h1>Find any movie from <span>just a clip</span></h1>
+      <p class="hero-sub">
+        Paste a URL from TikTok, YouTube, or X. Clipscene analyzes the context and tells you exactly what movie that clip is from, then helps you discover what to watch next.
+      </p>
+
+      <!-- Usage bar - DISPLAY ONLY (server enforces limits) -->
+      <div class="usage-bar-wrap" id="usageBarWrap" style="display:none">
+        <div class="usage-bar-label">
+          <span id="usageLabel">Loading...</span>
+          <span style="color:var(--accent);cursor:pointer;font-weight:500" onclick="openPayModal()">Upgrade for unlimited ✨</span>
+        </div>
+        <div class="usage-bar-track"><div class="usage-bar-fill" id="usageBarFill" style="width:0%"></div></div>
+      </div>
+
+      <div class="demo-box">
+        <input type="text" class="demo-input" placeholder="Paste clip URL from TikTok, YouTube, X..." id="urlInput"/>
+        <button class="btn-primary" id="traceBtn">Trace Movie 🔍</button>
+      </div>
+      <p id="inputError" class="input-error"></p>
+
+      <p class="hero-note" id="heroNote">
+        <span>ℹ️</span> Free tier: 3 searches per day. <span id="heroNoteSignup" style="cursor:pointer;text-decoration:underline;margin-left:4px" onclick="openAuthModal('signup')">Sign up free</span>
+      </p>
+
+      <!-- Shimmer -->
+      <div class="shimmer-card" id="shimmerCard">
+        <div class="shimmer-line short"></div>
+        <div class="shimmer-line wide" style="height:28px;margin-bottom:8px"></div>
+        <div class="shimmer-line short" style="width:20%"></div>
+        <hr class="result-divider">
+        <div class="shimmer-line full"></div>
+        <div class="shimmer-line full"></div>
+        <div class="shimmer-line" style="width:70%"></div>
+      </div>
+
+      <!-- Result card -->
+      <div class="result-card" id="resultCard">
+        <div class="result-label">🎬 Movie Identified</div>
+        <div class="result-title" id="resTitle"></div>
+        <div class="result-year" id="resYear"></div>
+        <div class="result-meta" id="resMeta"></div>
+        <hr class="result-divider">
+        <div class="result-section-title">Overview</div>
+        <p class="result-summary" id="resSummary"></p>
+        <div class="result-tags" id="resTags"></div>
+
+        <!-- PREMIUM SECTIONS (hidden for free users) -->
+        <div id="premiumSections" style="display:none">
+          <hr class="result-divider">
+          <div class="premium-section">
+            <div class="result-section-title">Cast</div>
+            <div class="cast-grid" id="resCast"></div>
+          </div>
+          <hr class="result-divider">
+          <div class="premium-section">
+            <div class="result-section-title">Director</div>
+            <div class="director-card" id="resDirector"></div>
+          </div>
+          <hr class="result-divider">
+          <div class="premium-section">
+            <div class="result-section-title">You might also like</div>
+            <div class="related-grid" id="resRelated"></div>
+          </div>
+          <hr class="result-divider">
+          <div class="premium-section">
+            <div class="result-section-title">Where to Watch</div>
+            <div class="watch-links" id="resWatch"></div>
+          </div>
+        </div>
+
+        <!-- FREE GATE teaser -->
+        <div class="premium-gate" id="premiumGate" style="display:none">
+          <div class="premium-gate-title">✨ Premium gives you more</div>
+          <div class="premium-gate-text">See the full cast, director filmography, similar movies, and where to stream — all for $4/month.</div>
+          <button class="btn-gold" onclick="openPayModal()">Upgrade to Premium — $4/mo</button>
+        </div>
+      </div>
+
+      <!-- Error card -->
+      <div class="result-card error-card" id="errorCard">
+        <div class="result-error-msg">
+          <strong id="errTitle"></strong>
+          <span id="errMsg"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== HOW IT WORKS ===== -->
+  <section class="section" id="how">
+    <div class="section-header">
+      <div class="section-label">How It Works</div>
+      <h2>From clip to cinema in seconds</h2>
+      <p class="section-sub">No more "what movie is this from?" comments. Just paste, trace, discover.</p>
+    </div>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><h3>Paste the URL</h3><p>Copy any link from TikTok, YouTube Shorts, X, Instagram Reels, or wherever you saw that clip.</p></div>
+      <div class="step"><div class="step-num">2</div><h3>AI Analysis</h3><p>Our system searches the web for metadata, titles, descriptions, and context around that URL to identify the source.</p></div>
+      <div class="step"><div class="step-num">3</div><h3>Discover More</h3><p>Get the movie name, cast details, director filmography, and personalized recommendations for what to watch next.</p></div>
+    </div>
+  </section>
+
+  <!-- ===== FEATURES ===== -->
+  <section class="section features" id="features">
+    <div class="section-header">
+      <div class="section-label">Features</div>
+      <h2>More than just a movie finder</h2>
+      <p class="section-sub">Clipscene becomes your personal film curator once it knows what you like.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature"><div class="feature-icon">⚡</div><div><h3>Instant Identification</h3><p>Paste any clip URL and get the movie title and release year within seconds. Works with edited clips, memes, and reaction videos.</p></div></div>
+      <div class="feature"><div class="feature-icon">🎭</div><div><h3>Cast & Crew Deep Dive</h3><p>See notable actors in the film, then explore their filmographies. Find hidden gems starring your favorite performers.</p></div></div>
+      <div class="feature"><div class="feature-icon">🎬</div><div><h3>Director Filmography</h3><p>Loved the style? Instantly see other movies by the same director. Build your watchlist around auteurs you admire.</p></div></div>
+      <div class="feature"><div class="feature-icon">🤖</div><div><h3>Smart Recommendations</h3><p>AI-powered suggestions based on the cast, genre, and director patterns. The more you trace, the better it gets.</p></div></div>
+    </div>
+    <div class="honest-section">
+      <h3>🎭 The honest bit</h3>
+      <p>AI can't actually watch videos yet. Clipscene works by analyzing the metadata, titles, descriptions, and web context attached to your URL. It works brilliantly for popular clips and viral moments, but may struggle with extremely obscure or unlabeled content. We're building toward true video analysis as the tech improves.</p>
+    </div>
+  </section>
+
+  <!-- ===== PRICING ===== -->
+  <section class="section" id="pricing">
+    <div class="section-header">
+      <div class="section-label">Pricing</div>
+      <h2>Simple, transparent plans</h2>
+      <p class="section-sub">Start free. Upgrade when you're ready to dive deeper into cinema.</p>
+    </div>
+    <div class="pricing-cards">
+      <div class="pricing-card">
+        <div class="pricing-header">
+          <div class="pricing-name">Free</div>
+          <div class="pricing-price">$0<span>/month</span></div>
+          <div class="pricing-desc">For casual movie hunters</div>
+        </div>
+        <ul class="pricing-features">
+          <li>3 searches per day</li>
+          <li>Movie name & year</li>
+          <li>Basic search history</li>
+          <li class="disabled">Cast information</li>
+          <li class="disabled">Director details</li>
+          <li class="disabled">Related movies</li>
+          <li class="disabled">Watch links & affiliates</li>
+        </ul>
+        <button class="btn-primary btn-secondary btn-full" onclick="openAuthModal('signup')">Start Free</button>
+      </div>
+      <div class="pricing-card featured">
+        <div class="popular-badge">Most Popular</div>
+        <div class="pricing-header">
+          <div class="pricing-name">Premium</div>
+          <div class="pricing-price">$4<span>/month</span></div>
+          <div class="pricing-desc">For film lovers & binge watchers</div>
+        </div>
+        <ul class="pricing-features">
+          <li>Unlimited searches</li>
+          <li>Movie name & year</li>
+          <li>Full search history</li>
+          <li>Notable cast details</li>
+          <li>Complete director filmography</li>
+          <li>AI-powered related movies</li>
+          <li>Direct watch links (Netflix, Prime, etc)</li>
+        </ul>
+        <button class="btn-primary btn-full" onclick="openPayModal()">Upgrade to Premium</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-logo">Clipscene</div>
+    <p class="footer-tagline">The trust layer for movie discovery</p>
+    <div class="footer-links">
+      <a href="https://twitter.com/clipscene" target="_blank" rel="noopener">Twitter</a>
+      <a href="https://github.com/clipscene" target="_blank" rel="noopener">GitHub</a>
+      <a href="mailto:clipscene@gmail.com">Contact</a>
+    </div>
+    <p class="footer-copy">© 2026 Clipscene. A Point Woebegone product.</p>
+  </footer>
+
+  <!-- ===================== AUTH MODAL ===================== -->
+  <div class="modal-overlay" id="authModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeModal('authModal')" aria-label="Close"></button>
+      <div class="modal-logo">Clipscene</div>
+      <div class="modal-title" id="authTitle">Welcome back</div>
+      <div class="modal-sub" id="authSub">Sign in to your account</div>
+
+      <div class="social-btns">
+        <!-- Google only - Apple/Facebook hidden for now -->
+        <button class="social-btn" onclick="socialAuth('google')">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Continue with Google
+        </button>
+        <!-- Apple & Facebook temporarily disabled -->
+        <!--
+        <button class="social-btn" onclick="socialAuth('apple')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+          Continue with Apple
+        </button>
+        <button class="social-btn" onclick="socialAuth('facebook')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          Continue with Facebook
+        </button>
+        -->
+      </div>
+
+      <div class="divider-row"><hr/><span>or</span><hr/></div>
+
+      <div id="signInForm">
+        <div class="field"><label>Email</label><input type="email" id="authEmail" placeholder="you@example.com"/></div>
+        <div class="field" id="nameFieldWrap" style="display:none"><label>Full name</label><input type="text" id="authName" placeholder="Your name"/></div>
+        <div class="field"><label>Password</label><input type="password" id="authPassword" placeholder="••••••••"/></div>
+        <div id="authErr" class="modal-err"></div>
+        <button class="btn-submit" id="authSubmitBtn" onclick="handleEmailAuth()">Sign In</button>
+        <div class="modal-switch" id="authSwitch">Don't have an account? <a onclick="switchAuthMode('signup')">Sign up free</a></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== PAYMENT MODAL ===================== -->
+  <div class="modal-overlay" id="payModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeModal('payModal')" aria-label="Close"></button>
+      <div class="modal-title">Upgrade to Premium</div>
+      <div class="modal-sub">Unlock unlimited searches and full movie intelligence</div>
+
+      <div class="plan-preview">
+        <div class="plan-preview-name">Premium Plan</div>
+        <div class="plan-preview-price">$4<span> / month</span></div>
+        <ul class="plan-preview-perks">
+          <li>Unlimited daily searches</li>
+          <li>Full cast & actor filmographies</li>
+          <li>Director deep-dive profiles</li>
+          <li>AI-powered related movie picks</li>
+          <li>Direct streaming watch links</li>
+        </ul>
+      </div>
+
+      <!-- Country selector for payment method -->
+      <div class="country-select">
+        <label>Select your country</label>
+        <select id="countrySelect" onchange="updatePaymentMethod()">
+          <option value="NG" selected>Nigeria 🇳🇬</option>
+          <option value="GH">Ghana 🇬🇭</option>
+          <option value="KE">Kenya 🇰🇪</option>
+          <option value="ZA">South Africa 🇿🇦</option>
+          <option value="CI">Côte d'Ivoire 🇨🇮</option>
+          <option value="UG">Uganda 🇺🇬</option>
+          <option value="TZ">Tanzania 🇹🇿</option>
+          <option value="RW">Rwanda 🇷🇼</option>
+          <option value="US">United States 🇺🇸</option>
+          <option value="GB">United Kingdom 🇬🇧</option>
+          <option value="OTHER">Other Country 🌍</option>
+        </select>
+      </div>
+
+      <div class="payment-methods" id="paymentMethods">
+        <button class="btn-pay btn-flutterwave" onclick="startFlutterwave()">
+          Pay with Card / Mobile Money (Flutterwave)
+        </button>
+      </div>
+
+      <div class="pay-note">
+        Secure payment • Cancel anytime • Instant access<br>
+        <span id="paymentRegionNote">Flutterwave accepts global cards and mobile money</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== LIMIT MODAL ===================== -->
+  <div class="modal-overlay" id="limitModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeModal('limitModal')" aria-label="Close"></button>
+      <div class="limit-icon">⛔</div>
+      <div class="limit-title">You've hit your daily limit</div>
+      <div class="limit-sub">Free accounts get 3 searches per day. Upgrade to Premium and never hit a wall again.</div>
+      <ul class="limit-perks">
+        <li>Unlimited searches every day</li>
+        <li>Full cast & director deep dives</li>
+        <li>AI movie recommendations</li>
+        <li>Where to stream, for every film</li>
+      </ul>
+      <button class="btn-pay btn-flutterwave" onclick="closeModal('limitModal'); openPayModal()">Upgrade — $4/month</button>
+      <div class="limit-reset">Your free searches reset at midnight. 🕛</div>
+    </div>
+  </div>
+
+  <!-- ===================== SCRIPTS ===================== -->
+  <script>
+  // ── CONFIGURATION ──
+  const FLUTTERWAVE_PUBLIC_KEY = 'FLUTTERWAVE_SECRET_KEY'; // TODO: Replace with LIVE key before production
+  const API_URL = 'https://cinematrace-backend.onrender.com/api/analyze'; // ⚠️ VERIFY: Backend must be live
+  const VERIFY_PAYMENT_URL = 'https://cinematrace-backend.onrender.com/api/verify-payment';
+
+  // ── FIREBASE ── 
+  const firebaseConfig = {
+    apiKey: "AIzaSyAtmYpbUdhO-BavnL3XqLYGcNWrf8Hy1xg",
+    authDomain: "clipscene-b2504.firebaseapp.com",
+    projectId: "clipscene-b2504",
+    storageBucket: "clipscene-b2504.firebasestorage.app",
+    messagingSenderId: "389010771112",
+    appId: "1:389010771112:web:62caf06a6118678e70069d",
+    measurementId: "G-H2T83FSZ4H"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+
+  // ── APP STATE ──
+  let appState = {
+    user: null,
+    idToken: null, // Firebase ID token for backend auth
+    usageToday: 0,
+    lastUsageDate: null,
+    FREE_LIMIT: 3,
+    authMode: 'signin',
+    lastResult: null,
+    selectedCountry: 'NG',
+    isPremium: false // NOTE: This is display-only; backend enforces premium status
+  };
+
+  const FLUTTERWAVE_COUNTRIES = ['NG', 'GH', 'KE', 'ZA', 'UG', 'TZ', 'RW', 'CM', 'CI', 'SN', 'EG', 'US', 'GB'];
+
+  // ── PERSIST STATE ──
+  function loadState() {
+    try {
+      const saved = localStorage.getItem('clipscene_user');
+      if (saved) appState.user = JSON.parse(saved);
+
+      const country = localStorage.getItem('clipscene_country');
+      if (country) appState.selectedCountry = country;
+    } catch(e) {}
+  }
+
+  function saveState() {
+    try {
+      if (appState.user) localStorage.setItem('clipscene_user', JSON.stringify(appState.user));
+      localStorage.setItem('clipscene_country', appState.selectedCountry);
+    } catch(e) {}
+  }
+
+  // ── FIREBASE AUTH STATE LISTENER ──
+  auth.onAuthStateChanged(async firebaseUser => {
+    if (firebaseUser) {
+      // Get fresh ID token
+      const token = await firebaseUser.getIdToken();
+      appState.idToken = token;
+
+      if (appState.user) {
+        appState.user.token = token;
+        appState.user.email = firebaseUser.email;
+        saveState();
+      }
+
+      // Fetch user profile from backend (includes premium status)
+      await fetchUserProfile();
+    } else {
+      appState.user = null;
+      appState.idToken = null;
+      appState.isPremium = false;
+    }
+    refreshNavUI();
+  });
+
+  // ── FETCH USER PROFILE FROM BACKEND ──
+  async function fetchUserProfile() {
+    if (!appState.idToken) return;
+
+    try {
+      // The backend will return user data including plan status
+      // For now, we rely on the analyze endpoint to tell us if we're premium
+      // In production, add a /api/me endpoint
+    } catch (err) {
+      console.error('Failed to fetch user profile:', err);
+    }
+  }
+
+  // ── NAV UI ──
+  function refreshNavUI() {
+    const area = document.getElementById('navAuthArea');
+    const heroNoteSignup = document.getElementById('heroNoteSignup');
+    const usageWrap = document.getElementById('usageBarWrap');
+
+    if (!appState.user) {
+      area.innerHTML = `<button class="btn-nav" onclick="openAuthModal('signin')">Sign In</button>`;
+      if (heroNoteSignup) heroNoteSignup.style.display = '';
+      if (usageWrap) usageWrap.style.display = 'none';
+      return;
+    }
+
+    const initials = (appState.user.name || appState.user.email || 'U').charAt(0).toUpperCase();
+    const isPrem = appState.isPremium;
+
+    area.innerHTML = `
+      <div class="nav-user">
+        <span class="nav-plan-badge ${isPrem ? '' : 'free'}">${isPrem ? '★ Premium' : 'Free'}</span>
+        <div class="nav-avatar ${isPrem ? 'premium-avatar' : ''}" title="${appState.user.email}" onclick="handleAvatarClick()">${initials}</div>
+      </div>`;
+
+    if (heroNoteSignup) heroNoteSignup.style.display = 'none';
+
+    if (!isPrem && usageWrap) {
+      usageWrap.style.display = 'block';
+      updateUsageDisplay();
+    } else if (usageWrap) {
+      usageWrap.style.display = 'none';
+    }
+  }
+
+  function updateUsageDisplay() {
+    const pct = Math.min((appState.usageToday / appState.FREE_LIMIT) * 100, 100);
+    document.getElementById('usageLabel').textContent = `${appState.usageToday} / ${appState.FREE_LIMIT} free searches used today`;
+    const fill = document.getElementById('usageBarFill');
+    fill.style.width = pct + '%';
+    fill.className = 'usage-bar-fill' + (pct >= 100 ? ' full' : pct >= 66 ? ' warn' : '');
+  }
+
+  function handleAvatarClick() {
+    if (!confirm(`Signed in as ${appState.user.email}\n\nSign out?`)) return;
+    auth.signOut().catch(() => {});
+    appState.user = null;
+    appState.idToken = null;
+    appState.isPremium = false;
+    appState.usageToday = 0;
+    localStorage.removeItem('clipscene_user');
+    refreshNavUI();
+  }
+
+  // ── MODAL HELPERS ──
+  function openModal(id) { document.getElementById(id).classList.add('active'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) overlay.classList.remove('active');
+    });
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+  });
+
+  // ── AUTH MODAL ──
+  function openAuthModal(mode) {
+    switchAuthMode(mode || 'signin');
+    openModal('authModal');
+  }
+
+  function switchAuthMode(mode) {
+    appState.authMode = mode;
+    const isSignup = mode === 'signup';
+    document.getElementById('authTitle').textContent = isSignup ? 'Create your account' : 'Welcome back';
+    document.getElementById('authSub').textContent = isSignup ? 'Start for free — no card needed' : 'Sign in to your account';
+    document.getElementById('authSubmitBtn').textContent = isSignup ? 'Create Account' : 'Sign In';
+    document.getElementById('nameFieldWrap').style.display = isSignup ? '' : 'none';
+    document.getElementById('authSwitch').innerHTML = isSignup
+      ? `Already have an account? <a onclick="switchAuthMode('signin')">Sign in</a>`
+      : `Don't have an account? <a onclick="switchAuthMode('signup')">Sign up free</a>`;
+    document.getElementById('authErr').textContent = '';
+  }
+
+  // ── REAL FIREBASE EMAIL AUTH ──
+  async function handleEmailAuth() {
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    const name = document.getElementById('authName').value.trim();
+    const errEl = document.getElementById('authErr');
+    const btn = document.getElementById('authSubmitBtn');
+
+    if (!email || !password) { errEl.textContent = '⚠ Please fill in all fields.'; return; }
+    if (appState.authMode === 'signup' && !name) { errEl.textContent = '⚠ Please enter your name.'; return; }
+    if (password.length < 6) { errEl.textContent = '⚠ Password must be at least 6 characters.'; return; }
+
+    btn.textContent = 'Please wait...';
+    btn.disabled = true;
+    errEl.textContent = '';
+
+    try {
+      let firebaseUser;
+
+      if (appState.authMode === 'signup') {
+        const cred = await auth.createUserWithEmailAndPassword(email, password);
+        firebaseUser = cred.user;
+        await firebaseUser.updateProfile({ displayName: name });
+      } else {
+        const cred = await auth.signInWithEmailAndPassword(email, password);
+        firebaseUser = cred.user;
+      }
+
+      const token = await firebaseUser.getIdToken();
+
+      appState.user = {
+        id: firebaseUser.uid,
+        name: firebaseUser.displayName || name || email.split('@')[0],
+        email: firebaseUser.email,
+        token: token
+      };
+      appState.idToken = token;
+
+      saveState();
+      closeModal('authModal');
+      refreshNavUI();
+
+    } catch(err) {
+      const codes = {
+        'auth/email-already-in-use': 'That email is already registered. Try signing in.',
+        'auth/invalid-email': 'Please enter a valid email address.',
+        'auth/wrong-password': 'Incorrect password. Please try again.',
+        'auth/user-not-found': 'No account found with that email.',
+        'auth/weak-password': 'Password must be at least 6 characters.',
+        'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
+        'auth/network-request-failed': 'Network error. Check your connection and try again.',
+      };
+      errEl.textContent = '⚠ ' + (codes[err.code] || err.message || 'Something went wrong. Please try again.');
+    } finally {
+      btn.textContent = appState.authMode === 'signup' ? 'Create Account' : 'Sign In';
+      btn.disabled = false;
+    }
+  }
+
+  // ── SOCIAL AUTH (Google only) ──
+  function socialAuth(provider) {
+    if (provider === 'google') {
+      const googleProvider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(googleProvider)
+        .then(async result => {
+          const firebaseUser = result.user;
+          const token = await firebaseUser.getIdToken();
+          appState.user = {
+            id: firebaseUser.uid,
+            name: firebaseUser.displayName || firebaseUser.email.split('@')[0],
+            email: firebaseUser.email,
+            token: token
+          };
+          appState.idToken = token;
+          saveState();
+          closeModal('authModal');
+          refreshNavUI();
+        })
+        .catch(err => {
+          document.getElementById('authErr').textContent = '⚠ ' + (err.message || 'Google sign-in failed.');
+        });
+    } else {
+      document.getElementById('authErr').textContent = '⚠ ' + provider + ' sign-in coming soon. Please use email or Google for now.';
+    }
+  }
+
+  // ── PAYMENT METHOD LOGIC ──
+  function updatePaymentMethod() {
+    const country = document.getElementById('countrySelect').value;
+    appState.selectedCountry = country;
+    saveState();
+    const note = document.getElementById('paymentRegionNote');
+    const hasFlutterwave = FLUTTERWAVE_COUNTRIES.includes(country);
+
+    note.textContent = hasFlutterwave 
+      ? 'Flutterwave available in your country' 
+      : 'Flutterwave accepts global cards';
+  }
+
+  function openPayModal() {
+    if (!appState.user) { openAuthModal('signup'); return; }
+    document.getElementById('countrySelect').value = appState.selectedCountry;
+    updatePaymentMethod();
+    openModal('payModal');
+  }
+
+  // ── FLUTTERWAVE PAYMENT ──
+  function startFlutterwave() {
+    if (!appState.user) { openAuthModal('signup'); return; }
+    if (!window.FlutterwaveCheckout) {
+      const s = document.createElement('script');
+      s.src = 'https://checkout.flutterwave.com/v3.js';
+      s.onload = () => launchFlutterwave();
+      document.head.appendChild(s);
+    } else {
+      launchFlutterwave();
+    }
+  }
+
+  function launchFlutterwave() {
+    FlutterwaveCheckout({
+      public_key: FLUTTERWAVE_PUBLIC_KEY,
+      tx_ref: 'cs_fw_' + Date.now(),
+      amount: 4,
+      currency: 'USD',
+      payment_options: 'card, mobilemoney, ussd, bank_transfer',
+      customer: {
+        email: appState.user.email,
+        name: appState.user.name || appState.user.email,
+      },
+      customizations: {
+        title: 'Clipscene Premium',
+        description: 'Unlimited searches + full movie intelligence',
+        logo: 'https://pointwoebegone.com/favicon-32x32.png',
+      },
+      callback: response => {
+        if (response.status === 'successful') verifyAndUpgrade('flutterwave', response.transaction_id);
+      },
+      onclose: () => {},
+    });
+    closeModal('payModal');
+  }
+
+  // ── VERIFY PAYMENT & UPGRADE ── BACKEND VERSION
+  async function verifyAndUpgrade(provider, reference) {
+    try {
+      const res = await fetch(VERIFY_PAYMENT_URL, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${appState.idToken}` 
+        },
+        body: JSON.stringify({ provider, reference, userId: appState.user.id })
+      });
+
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      const data = await res.json();
+
+      if (!data.success) throw new Error(data.message || 'Verification failed');
+
+      // Update local state from backend response (display only)
+      appState.isPremium = data.plan === 'premium';
+      appState.user.plan = data.plan;
+      saveState();
+      refreshNavUI();
+      if (appState.lastResult) renderPremiumSections(appState.lastResult);
+
+      alert('✅ Welcome to Clipscene Premium! Enjoy unlimited searches.');
+    } catch(err) {
+      console.error('Payment verification error:', err);
+      alert('❌ Payment verification failed. Please contact support or try again.');
+    }
+  }
+
+  // ── SEARCH / TRACE ── SERVER-SIDE RATE LIMITING
+  const traceBtn = document.getElementById('traceBtn');
+  const input = document.getElementById('urlInput');
+  const inputErr = document.getElementById('inputError');
+  const shimmer = document.getElementById('shimmerCard');
+  const resultCard = document.getElementById('resultCard');
+  const errorCard = document.getElementById('errorCard');
+
+  function showOnly(card) {
+    shimmer.classList.remove('visible');
+    resultCard.classList.remove('visible');
+    errorCard.classList.remove('visible');
+    if (card) { 
+      card.classList.add('visible'); 
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); 
+    }
+  }
+
+  function showError(title, msg) {
+    document.getElementById('errTitle').textContent = title;
+    document.getElementById('errMsg').textContent = msg;
+    showOnly(errorCard);
+  }
+
+  traceBtn.addEventListener('click', async () => {
+    const url = input.value.trim();
+    if (!url) { 
+      inputErr.textContent = '⚠ Please paste a URL first.'; 
+      input.focus(); 
+      return; 
+    }
+    inputErr.textContent = '';
+
+    // Check if user is signed in (required for server-side rate limiting)
+    if (!appState.idToken) {
+      openAuthModal('signup');
+      return;
+    }
+
+    const originalHTML = traceBtn.innerHTML;
+    traceBtn.innerHTML = '<span style="display:inline-flex;align-items:center;gap:8px">⏳ Tracing...</span>';
+    traceBtn.disabled = true;
+    showOnly(shimmer);
+
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${appState.idToken}` // Server verifies this
+        },
+        body: JSON.stringify({ url })
+      });
+
+      const data = await response.json();
+
+      if (response.status === 429) {
+        // Rate limited by server
+        openModal('limitModal');
+        showOnly(null);
+        return;
+      }
+
+      if (response.status === 401) {
+        showError('Session expired', 'Please sign in again.');
+        auth.signOut();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || `Server error ${response.status}`);
+      }
+
+      if (data.success && data.result) {
+        const r = data.result;
+        appState.lastResult = r;
+
+        // Update usage from server response (trust server, not localStorage)
+        if (data.remaining !== undefined && data.remaining !== 'unlimited') {
+          appState.usageToday = 3 - data.remaining; // Convert to used count
+          updateUsageDisplay();
+        }
+
+        // Update premium status from server
+        if (data.isPremium !== undefined) {
+          appState.isPremium = data.isPremium;
+          refreshNavUI();
+        }
+
+        document.getElementById('resTitle').textContent = r.movieName || 'Unknown Title';
+        document.getElementById('resYear').textContent = r.year ? `📅 ${r.year}` : '';
+        document.getElementById('resMeta').innerHTML = `
+          <div class="result-badge"><strong>Genre:</strong> ${r.genres?.join(', ') || 'N/A'}</div>
+          <div class="result-badge"><strong>Rating:</strong> ${r.rating || 'N/A'}</div>
+          ${r.director ? `<div class="result-badge"><strong>Director:</strong> ${typeof r.director === 'string' ? r.director : r.director.name}</div>` : ''}
+        `;
+        document.getElementById('resSummary').textContent = r.summary || 'No summary available.';
+        document.getElementById('resTags').innerHTML = (r.tags || [])
+          .map(tag => `<span class="result-tag">${tag}</span>`)
+          .join('');
+
+        renderPremiumSections(r);
+        showOnly(resultCard);
+
+        // Show upgrade nudge on last free search
+        if (!appState.isPremium && data.remaining === 0) {
+          setTimeout(() => {
+            const nudge = document.createElement('div');
+            nudge.style.cssText = 'text-align:center;margin-top:16px;font-size:13px;color:#8a8a9a;';
+            nudge.innerHTML = `That was your last free search today. <a href="#pricing" style="color:#d4a574;text-decoration:underline;">Upgrade to Premium</a> for unlimited.`;
+            resultCard.appendChild(nudge);
+          }, 600);
+        }
+
+      } else {
+        showError('Movie not found', data.error || 'Could not identify this movie. Try a different clip or URL.');
+      }
+    } catch(err) {
+      if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        showError('Cannot reach server', 'The Clipscene backend is not responding. Please try again in a moment.');
+      } else {
+        showError('Something went wrong', err.message || 'Please check the URL and try again.');
+      }
+    } finally {
+      traceBtn.innerHTML = originalHTML;
+      traceBtn.disabled = false;
+    }
+  });
+
+  // Clear inline error on typing
+  input.addEventListener('input', () => { inputErr.textContent = ''; });
+
+  // ── RENDER PREMIUM SECTIONS ──
+  function renderPremiumSections(result) {
+    const premiumSections = document.getElementById('premiumSections');
+    const premiumGate = document.getElementById('premiumGate');
+
+    // NOTE: Premium status is verified server-side on every request
+    // This is just for UI display - backend enforces the actual restriction
+    const isPrem = appState.isPremium;
+
+    if (!isPrem) {
+      premiumSections.style.display = 'none';
+      premiumGate.style.display = 'block';
+      return;
+    }
+
+    premiumSections.style.display = 'block';
+    premiumGate.style.display = 'none';
+
+    // Cast
+    const castContainer = document.getElementById('resCast');
+    if (castContainer && result.cast && result.cast.length > 0) {
+      castContainer.innerHTML = result.cast
+        .map(actor => `
+          <div class="cast-pill">
+            <div class="cast-name">${actor.name}</div>
+            <div class="cast-role">${actor.role || 'Cast'}</div>
+          </div>`)
+        .join('');
+    }
+
+    // Director
+    const directorContainer = document.getElementById('resDirector');
+    if (directorContainer && result.director && typeof result.director === 'object') {
+      directorContainer.innerHTML = `
+        <div class="director-name">${result.director.name}</div>
+        <div class="director-films">
+          ${(result.director.filmography || []).slice(0, 5)
+            .map(film => `<span class="director-film-tag">${film}</span>`)
+            .join('')}
+        </div>`;
+    }
+
+    // Related movies
+    const relatedContainer = document.getElementById('resRelated');
+    if (relatedContainer && result.relatedMovies && result.relatedMovies.length > 0) {
+      relatedContainer.innerHTML = result.relatedMovies
+        .map(movie => `
+          <div class="related-item">
+            <div class="related-title">${movie.title}</div>
+            <div class="related-reason">${movie.reason || 'Similar'}</div>
+          </div>`)
+        .join('');
+    }
+
+    // Watch links
+    const watchContainer = document.getElementById('resWatch');
+    if (watchContainer && result.watchLinks && result.watchLinks.length > 0) {
+      watchContainer.innerHTML = result.watchLinks
+        .map(link => `
+          <a href="${link.url}" target="_blank" rel="noopener noreferrer" class="watch-link">
+            ${link.platform} ↗
+          </a>`)
+        .join('');
+    }
+  }
+
+  // ── INITIALIZE ──
+  loadState();
+  refreshNavUI();
+  </script>
+</body>
+</html>
