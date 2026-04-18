@@ -689,16 +689,21 @@
 
   // ── FETCH USER PROFILE FROM BACKEND ──
   async function fetchUserProfile() {
-    if (!appState.idToken) return;
-
-    try {
-      // The backend will return user data including plan status
-      // For now, we rely on the analyze endpoint to tell us if we're premium
-      // In production, add a /api/me endpoint
-    } catch (err) {
-      console.error('Failed to fetch user profile:', err);
+  if (!appState.idToken) return;
+  try {
+    const res = await fetch('https://cinematrace-backend.onrender.com/api/me', {
+      headers: { 'Authorization': `Bearer ${appState.idToken}` }
+    });
+    const data = await res.json();
+    if (data.success) {
+      appState.isPremium = data.isPremium;
+      appState.usageToday = data.searchesToday || 0;
+      refreshNavUI();
     }
+  } catch (err) {
+    console.error('Failed to fetch user profile:', err);
   }
+}
 
   // ── NAV UI ──
   function refreshNavUI() {
